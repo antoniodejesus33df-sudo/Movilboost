@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Arma MovilBoost: baja los mods de Modrinth y genera .mrpack + zip de respaldo."""
-import json, os, sys, urllib.parse, urllib.request, zipfile
+import json, os, subprocess, sys, urllib.parse, urllib.request, zipfile
 
 MC = "1.21.11"
 NAME = "MovilBoost"
@@ -97,6 +97,33 @@ def main():
                    f"{NAME} para Minecraft {MC} con Fabric {loader}.\n"
                    "Copia la carpeta mods y options.txt a la carpeta de tu instancia.\n"
                    "Renderizador recomendado: MobileGlues.\n")
+
+    # ---- Un solo .jar: MovilBoost con todos los mods adentro (jar-in-jar) ----
+    lib = f"out/fabric-loader-{loader}.jar"
+    with open(lib, "wb") as fh:
+        fh.write(get(f"https://maven.fabricmc.net/net/fabricmc/fabric-loader/{loader}/fabric-loader-{loader}.jar"))
+    os.makedirs("out/classes", exist_ok=True)
+    subprocess.check_call(["javac", "--release", "17", "-cp", lib, "-d", "out/classes",
+                           "src/com/movilboost/MovilBoostPreLaunch.java"])
+    nested = sorted(os.listdir("out/mods"))
+    mod_json = {
+        "schemaVersion": 1,
+        "id": "movilboost",
+        "version": VERSION,
+        "name": "MovilBoost",
+        "description": "Cliente de FPS para celular: Sodium, Lithium y mas, todo en un solo .jar.",
+        "authors": ["MovilBoost"],
+        "license": "MIT",
+        "environment": "client",
+        "entrypoints": {"preLaunch": ["com.movilboost.MovilBoostPreLaunch"]},
+        "depends": {"fabricloader": ">=0.16.0", "minecraft": MC},
+        "jars": [{"file": "META-INF/jars/" + n} for n in nested],
+    }
+    with zipfile.ZipFile(f"out/{NAME}-{VERSION}.jar", "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("fabric.mod.json", json.dumps(mod_json, indent=2))
+        z.write("out/classes/com/movilboost/MovilBoostPreLaunch.class", "com/movilboost/MovilBoostPreLaunch.class")
+        for n in nested:
+            z.write(os.path.join("out/mods", n), "META-INF/jars/" + n)
     print("LISTO. Fabric loader", loader, "mods:", len(files))
 
 
